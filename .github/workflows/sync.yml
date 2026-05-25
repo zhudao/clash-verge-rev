@@ -7,32 +7,39 @@ on:
 
 permissions:
   contents: write
-  workflows: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Get upstream repository
-        id: get-upstream
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Add upstream remote
         run: |
-          UPSTREAM=$(gh api repos/${{ github.repository }} --jq '.parent.full_name')
-          if [ "$UPSTREAM" == "null" ]; then
-            echo "这不是一个 fork 仓库，请手动指定上游"
-            exit 1
+          git remote add upstream https://github.com/clash-verge-rev/clash-verge-rev.git
+
+      - name: Fetch upstream
+        run: git fetch upstream
+
+      - name: Check if merge is needed
+        id: check
+        run: |
+          behind=$(git rev-list --count HEAD..upstream/dev)
+          echo "behind=$behind" >> $GITHUB_OUTPUT
+          if [ "$behind" -gt 0 ]; then
+            echo "需要同步 $behind 个提交"
+          else
+            echo "已是最新"
           fi
-          echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Sync with upstream
-        run: |
-          gh repo sync ${{ github.repository }}             --source ${{ steps.get-upstream.outputs.upstream }}             -b dev
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge upstream
+        if: steps.check.outputs.behind != '0'
+        run: git merge upstream/dev --no-edit
 
-      - name: Trigger workflow
-        run: |
-          gh workflow list
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push changes
+        if: steps.check.outputs.behind != '0'
+        run: git push
