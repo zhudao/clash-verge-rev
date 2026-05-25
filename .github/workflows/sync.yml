@@ -1,4 +1,4 @@
-name: Sync Fork (自动获取上游)
+name: Sync Fork
 
 on:
   schedule:
@@ -7,27 +7,16 @@ on:
 
 permissions:
   contents: write
+  workflow: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Get upstream repository
-        id: get-upstream
-        run: |
-          UPSTREAM=$(gh api repos/${{ github.repository }} --jq '.parent.full_name')
-          if [ "$UPSTREAM" == "null" ]; then
-            echo "这不是一个 fork 仓库，请手动指定上游"
-            exit 1
-          fi
-          echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Sync with upstream
+      - name: Sync fork with upstream
         run: |
           gh repo sync ${{ github.repository }} \
-            --source ${{ steps.get-upstream.outputs.upstream }} \
+            --source clash-verge-rev/clash-verge-rev \
             -b main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
