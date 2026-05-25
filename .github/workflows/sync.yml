@@ -1,4 +1,4 @@
-name: Sync Fork
+name: Sync Fork (自动获取上游)
 
 on:
   schedule:
@@ -7,47 +7,27 @@ on:
 
 permissions:
   contents: write
-  workflows: write
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout fork
-        uses: actions/checkout@v4
-        with:
-          ref: dev
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure Git identity
+      - name: Get upstream repository
+        id: get-upstream
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-
-      - name: Add upstream remote
-        run: |
-          git remote add upstream https://github.com/clash-verge-rev/clash-verge-rev.git || true
-          git fetch upstream || true
-
-      - name: Check if merge is needed
-        id: check
-        run: |
-          behind=$(git rev-list --count HEAD..upstream/dev 2>/dev/null || echo 0)
-          echo "behind=$behind" >> $GITHUB_OUTPUT
-          if [ "$behind" -gt 0 ]; then
-            echo "需要同步 $behind 个提交"
-          else
-            echo "已是最新"
+          UPSTREAM=$(gh api repos/${{ github.repository }} --jq '.parent.full_name')
+          if [ "$UPSTREAM" == "null" ]; then
+            echo "这不是一个 fork 仓库，请手动指定上游"
+            exit 1
           fi
+          echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Merge upstream
-        if: steps.check.outputs.behind != '0'
-        run: git merge upstream/dev --no-edit
-
-      - name: Push changes
-        if: steps.check.outputs.behind != '0'
-        run: git push
+      - name: Sync with upstream
+        run: |
+          gh repo sync ${{ github.repository }} \
+            --source ${{ steps.get-upstream.outputs.upstream }} \
+            -b main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
