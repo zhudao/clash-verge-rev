@@ -25,7 +25,7 @@ jobs:
           echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
           echo "已检测到上游: $UPSTREAM"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT }}
 
       - name: Sync with upstream
         run: |
@@ -33,4 +33,4 @@ jobs:
             --source ${{ steps.get-upstream.outputs.upstream }} \
             -b dev
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT }}
