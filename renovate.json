@@ -1,6 +1,6 @@
 {
   "extends": ["config:recommended", ":disableDependencyDashboard"],
-  "baseBranches": ["dev"],
+  "baseBranchPatterns": ["dev"],
   "enabledManagers": ["cargo", "npm", "github-actions"],
   "labels": ["dependencies"],
   "ignorePaths": [
@@ -30,9 +30,10 @@
       "enabled": false
     },
     {
-      "description": "Group all cargo dependencies into a single PR",
+      "description": "Group all cargo dependencies into a single PR and bump Cargo.toml ranges",
       "matchManagers": ["cargo"],
-      "groupName": "cargo dependencies"
+      "groupName": "cargo dependencies",
+      "rangeStrategy": "bump"
     },
     {
       "description": "Group all npm dependencies into a single PR",
@@ -49,8 +50,8 @@
   "ignoreDeps": ["criterion"],
   "lockFileMaintenance": {
     "enabled": true,
-    "description": "Force update Cargo.lock to track latest commits of git dependencies",
-    "automerge": true,
-    "schedule": ["before 5am on monday"]
+    "description": "Force update lockfile to track latest commits of git dependencies",
+    "schedule": ["* 0-4 1 * *"],
+    "automerge": true
   }
 }

@@ -10,6 +10,7 @@ mod feat;
 mod module;
 mod process;
 pub mod utils;
+
 use crate::constants::files;
 use crate::{
     core::handle,
@@ -19,7 +20,6 @@ use crate::{
 use anyhow::Result;
 use clash_verge_logging::{Type, logging};
 use once_cell::sync::OnceCell;
-use std::time::Duration;
 use tauri::{AppHandle, Manager as _};
 #[cfg(target_os = "macos")]
 use tauri_plugin_autostart::MacosLauncher;
@@ -61,11 +61,11 @@ mod app_init {
                     .socket_path(crate::config::IClashTemp::guard_external_controller_ipc())
                     .pool_config(
                         tauri_plugin_mihomo::IpcPoolConfigBuilder::new()
-                            .min_connections(1)
+                            .min_connections(3)
                             .max_connections(32)
                             .idle_timeout(std::time::Duration::from_secs(60))
                             .health_check_interval(std::time::Duration::from_secs(60))
-                            .reject_policy(RejectPolicy::Timeout(Duration::from_secs(3)))
+                            .reject_policy(RejectPolicy::Wait)
                             .build(),
                     )
                     .build(),
@@ -150,8 +150,6 @@ mod app_init {
             cmd::start_core,
             cmd::stop_core,
             cmd::restart_core,
-            cmd::notify_ui_ready,
-            cmd::update_ui_stage,
             cmd::get_running_mode,
             cmd::get_auto_launch_status,
             cmd::entry_lightweight_mode,
@@ -228,6 +226,8 @@ pub fn run() {
 
     #[cfg(target_os = "linux")]
     utils::linux::workarounds::apply_nvidia_dmabuf_renderer_workaround();
+    #[cfg(target_os = "linux")]
+    utils::linux::workarounds::apply_wayland_webkit_fix();
 
     let _ = utils::dirs::init_portable_flag();
 
@@ -251,11 +251,9 @@ pub fn run() {
                 logging!(error, Type::Setup, "Failed to setup window state: {}", e);
             }
 
-            resolve::resolve_setup_handle();
             resolve::resolve_setup_async();
             resolve::resolve_setup_sync();
             resolve::init_signal();
-            resolve::resolve_done();
 
             logging!(info, Type::Setup, "初始化已启动");
             Ok(())
@@ -265,7 +263,6 @@ pub fn run() {
     mod event_handlers {
         #[cfg(target_os = "macos")]
         use crate::module::lightweight;
-        #[cfg(target_os = "macos")]
         use crate::utils::window_manager::WindowManager;
         use crate::{
             config::Config,
@@ -284,7 +281,6 @@ pub fn run() {
             }
 
             logging!(info, Type::System, "应用就绪");
-            handle::Handle::global().init();
 
             #[cfg(target_os = "macos")]
             if let Some(window) = _app_handle.get_webview_window("main") {
@@ -294,8 +290,6 @@ pub fn run() {
 
         #[cfg(target_os = "macos")]
         pub async fn handle_reopen(has_visible_windows: bool) {
-            handle::Handle::global().init();
-
             if lightweight::is_in_lightweight_mode() {
                 lightweight::exit_lightweight_mode().await;
                 return;
@@ -317,7 +311,7 @@ pub fn run() {
 
             if let tauri::WindowEvent::CloseRequested { api, .. } = api {
                 api.prevent_close();
-                if let Some(window) = core::handle::Handle::get_window() {
+                if let Some(window) = WindowManager::get_main_window() {
                     let _ = window.hide();
                 }
             }
@@ -403,22 +397,20 @@ pub fn run() {
                 event_handlers::handle_reopen(has_visible_windows).await;
             });
         }
-        tauri::RunEvent::Exit => AsyncHandler::block_on(async {
-            if !handle::Handle::global().is_exiting() {
-                feat::quit().await;
-            }
-        }),
+        tauri::RunEvent::Exit => {
+            logging!(info, Type::System, "Application exited");
+        }
+        #[allow(unused_variables)]
         tauri::RunEvent::ExitRequested { api, code, .. } => {
-            if core::handle::Handle::global().is_exiting() {
-                return;
-            }
-
-            AsyncHandler::block_on(async {
-                let _ = handle::Handle::mihomo().await.clear_all_ws_connections().await;
-            });
-
-            if code.is_none() {
+            if module::lightweight::is_in_lightweight_mode() && !handle::Handle::global().is_exiting() {
                 api.prevent_exit();
+            } else if code.is_none() {
+                api.prevent_exit();
+                if !handle::Handle::global().is_exiting() {
+                    AsyncHandler::spawn(|| async {
+                        feat::quit().await;
+                    });
+                }
             }
         }
         tauri::RunEvent::WindowEvent { label, event, .. } if label == "main" => match event {

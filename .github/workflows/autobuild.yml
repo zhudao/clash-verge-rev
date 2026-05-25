@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # UTC+8 12:00, 18:00 -> UTC 4:00, 10:00
-    - cron: "0 4,10 * * *"
+    - cron: '0 4,10 * * *'
 permissions: write-all
 env:
   TAG_NAME: autobuild
@@ -13,7 +13,7 @@ env:
   RUST_BACKTRACE: short
   HUSKY: 0
 concurrency:
-  group: "${{ github.workflow }} - ${{ github.head_ref || github.ref }}"
+  group: '${{ github.workflow }} - ${{ github.head_ref || github.ref }}'
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
         run: bash ./scripts/extract_update_logs.sh
         shell: bash
 
-      - uses: pnpm/action-setup@v4.2.0
+      - uses: pnpm/action-setup@v6.0.8
         name: Install pnpm
         with:
           run_install: false
@@ -46,7 +46,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: '24.16.0'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -102,10 +102,10 @@ jobs:
           EOF
 
       - name: Upload Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
-          name: "Clash Verge Rev ${{ env.TAG_CHANNEL }}"
+          name: 'Clash Verge Rev ${{ env.TAG_CHANNEL }}'
           body_path: release.txt
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -137,7 +137,7 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-latest
             target: x86_64-apple-darwin
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
@@ -147,7 +147,7 @@ jobs:
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91.0"
+          toolchain: '1.95.0'
           targets: ${{ matrix.target }}
 
       - name: Add Rust Target
@@ -157,27 +157,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-          prefix-key: "v1-rust"
-          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           workspaces: |
             . -> target
           cache-all-crates: true
           cache-workspace-crates: true
 
       - name: Install dependencies (ubuntu only)
-        if: matrix.os == 'ubuntu-24.04'
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt install \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+          sudo apt-get install -y libxslt1.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: Install x86 OpenSSL (macOS only)
         if: matrix.target == 'x86_64-apple-darwin'
@@ -188,7 +179,7 @@ jobs:
           echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
 
-      - uses: pnpm/action-setup@v4.2.0
+      - uses: pnpm/action-setup@v6.0.8
         name: Install pnpm
         with:
           run_install: false
@@ -196,14 +187,14 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
-          cache: "pnpm"
+          node-version: '24.16.0'
+          cache: 'pnpm'
 
       - name: Pnpm Cache
         uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
-          key: "pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          key: 'pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           restore-keys: |
             pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}
 
@@ -218,14 +209,14 @@ jobs:
       - name: Add Rust Target
         run: |
           # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
-          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.95.0 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
       - name: Tauri build for Windows-macOS-Linux
         uses: tauri-apps/tauri-action@v0
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -237,8 +228,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ env.TAG_NAME }}
-          releaseName: "Clash Verge Rev ${{ env.TAG_CHANNEL }}"
-          releaseBody: "More new features are now supported."
+          releaseName: 'Clash Verge Rev ${{ env.TAG_CHANNEL }}'
+          releaseBody: 'More new features are now supported.'
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm
@@ -253,10 +244,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          # It should be ubuntu-22.04 to match the cross-compilation environment
+          # ortherwise it is hard to resolve the dependencies
+          - os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             arch: arm64
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             target: armv7-unknown-linux-gnueabihf
             arch: armhf
     runs-on: ${{ matrix.os }}
@@ -267,7 +260,7 @@ jobs:
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91.0"
+          toolchain: '1.95.0'
           targets: ${{ matrix.target }}
 
       - name: Add Rust Target
@@ -277,29 +270,29 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-          prefix-key: "v1-rust"
-          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           workspaces: |
             . -> target
           cache-all-crates: true
           cache-workspace-crates: true
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4.2.0
+        uses: pnpm/action-setup@v6.0.8
         with:
           run_install: false
 
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
-          cache: "pnpm"
+          node-version: '24.16.0'
+          cache: 'pnpm'
 
       - name: Pnpm Cache
         uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
-          key: "pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          key: 'pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           restore-keys: |
             pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}
 
@@ -311,33 +304,30 @@ jobs:
       - name: Release ${{ env.TAG_CHANNEL }} Version
         run: pnpm release-version autobuild-latest
 
-      - name: Setup for linux
-        run: |
+      - name: 'Setup for linux'
+        run: |-
           sudo ls -lR /etc/apt/
 
-          sudo rm -f /etc/apt/sources.list.d/ubuntu.sources
-          sudo tee /etc/apt/sources.list << EOF
-          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
-          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu noble-security main restricted universe multiverse
-          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
-          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu noble-backports main restricted universe multiverse
+          cat > /tmp/sources.list << EOF
+          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu jammy main multiverse universe restricted
+          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu jammy-security main multiverse universe restricted
+          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu jammy-updates main multiverse universe restricted
+          deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu jammy-backports main multiverse universe restricted
 
-          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse
-          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse
-          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse
-          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports noble-backports main restricted universe multiverse
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy main multiverse universe restricted
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main multiverse universe restricted
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main multiverse universe restricted
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main multiverse universe restricted
           EOF
 
+          sudo mv /etc/apt/sources.list /etc/apt/sources.list.default
+          sudo mv /tmp/sources.list /etc/apt/sources.list
+
           sudo dpkg --add-architecture ${{ matrix.arch }}
-          sudo apt-get update -y
-          sudo apt-get -f install -y
+          sudo apt update
 
-          sudo apt-get install -y \
-            linux-libc-dev:${{ matrix.arch }} \
-            libc6-dev:${{ matrix.arch }}
-
-          sudo apt-get install -y \
-            libxslt1-dev:${{ matrix.arch }} \
+          sudo apt install -y \
+            libxslt1.1:${{ matrix.arch }} \
             libwebkit2gtk-4.1-dev:${{ matrix.arch }} \
             libayatana-appindicator3-dev:${{ matrix.arch }} \
             libssl-dev:${{ matrix.arch }} \
@@ -361,7 +351,7 @@ jobs:
       - name: Add Rust Target
         run: |
           # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
-          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.95.0 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
@@ -377,7 +367,7 @@ jobs:
           fi
           pnpm build --target ${{ matrix.target }}
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
@@ -389,10 +379,10 @@ jobs:
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
       - name: Upload Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
-          name: "Clash Verge Rev ${{ env.TAG_CHANNEL }}"
+          name: 'Clash Verge Rev ${{ env.TAG_CHANNEL }}'
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
           files: |
@@ -425,29 +415,29 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-          prefix-key: "v1-rust"
-          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           workspaces: |
             . -> target
           cache-all-crates: true
           cache-workspace-crates: true
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4.2.0
+        uses: pnpm/action-setup@v6.0.8
         with:
           run_install: false
 
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
-          cache: "pnpm"
+          node-version: '24.16.0'
+          cache: 'pnpm'
 
       - name: Pnpm Cache
         uses: actions/cache@v5
         with:
           path: ~/.pnpm-store
-          key: "pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          key: 'pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           restore-keys: |
             pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}
 
@@ -469,7 +459,7 @@ jobs:
       - name: Add Rust Target
         run: |
           # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
-          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.95.0 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
@@ -477,7 +467,7 @@ jobs:
         id: build
         uses: tauri-apps/tauri-action@v0
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -507,10 +497,10 @@ jobs:
           }
 
       - name: Upload Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
-          name: "Clash Verge Rev ${{ env.TAG_CHANNEL }}"
+          name: 'Clash Verge Rev ${{ env.TAG_CHANNEL }}'
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
           files: target/${{ matrix.target }}/release/bundle/nsis/*setup*
@@ -542,9 +532,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: '24.16.0'
 
-      - uses: pnpm/action-setup@v4.2.0
+      - uses: pnpm/action-setup@v6.0.8
         name: Install pnpm
         with:
           run_install: false

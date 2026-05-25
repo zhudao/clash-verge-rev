@@ -2,7 +2,9 @@ use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
 use std::collections::{HashMap, HashSet};
 
-const PATCH_CONFIG_INNER: [&str; 4] = ["allow-lan", "ipv6", "log-level", "unified-delay"];
+use crate::enhance::field::use_keys;
+
+const PATCH_CONFIG_INNER: [&str; 5] = ["allow-lan", "ipv6", "log-level", "unified-delay", "tunnels"];
 
 #[derive(Default, Clone)]
 pub struct IRuntime {
@@ -20,7 +22,7 @@ impl IRuntime {
         Self::default()
     }
 
-    // 这里只更改 allow-lan | ipv6 | log-level | tun
+    // 这里只更改 allow-lan | ipv6 | log-level | tun | tunnels
     #[inline]
     pub fn patch_config(&mut self, patch: &Mapping) {
         let config = if let Some(config) = self.config.as_mut() {
@@ -135,14 +137,4 @@ impl IRuntime {
             }
         }
     }
-}
-
-// TODO 完整迁移 enhance 行为后移除
-#[inline]
-fn use_keys<'a>(config: &'a Mapping) -> impl Iterator<Item = String> + 'a {
-    config.iter().filter_map(|(key, _)| key.as_str()).map(|s: &str| {
-        let mut s: String = s.into();
-        s.make_ascii_lowercase();
-        s
-    })
 }

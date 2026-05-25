@@ -59,6 +59,7 @@
     "menu": {
       "home": "Home",
       "select": "اختيار",
+      "shareQrCode": "Share QR Code",
       "editInfo": "تعديل المعلومات",
       "editFile": "تعديل الملف",
       "editRules": "تعديل القواعد",
@@ -72,8 +73,8 @@
     },
     "more": {
       "global": {
-        "merge": "Global Merge",
-        "script": "Global Script"
+        "merge": "Global Extend Config",
+        "script": "Global Extend Script"
       },
       "chips": {
         "merge": "Merge",
@@ -177,6 +178,9 @@
     },
     "logViewer": {
       "title": "وحدة التحكم للسكريبت"
+    },
+    "qrViewer": {
+      "title": "Subscription QR Code"
     }
   }
 }

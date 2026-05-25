@@ -43,11 +43,11 @@ We provide packages for Windows (x64/x86), Linux (x64/arm64), and macOS 10.15+ (
 
 Read the [project documentation](https://clash-verge-rev.github.io/) for install steps, troubleshooting, and frequently asked questions.
 
----
-
 ### Telegram Channel
 
 Join [@clash_verge_rev](https://t.me/clash_verge_re) for update announcements.
+
+---
 
 ## Promotion
 
@@ -64,23 +64,21 @@ Join [@clash_verge_rev](https://t.me/clash_verge_re) for update announcements.
 - 💰 Discounted plans at **only CNY 21 per month, 160GB traffic, 20% off with annual billing**
 - 🌍 Overseas team, no risk of shutdown or exit scams, with up to **50% referral commission**
 - ⚙️ **Cluster-based load balancing** architecture with **real-time load monitoring and elastic scaling**, high-speed dedicated lines (compatible with legacy clients), ultra-low latency, unaffected by peak hours, **4K streaming loads instantly**
-- ⚡ The world’s first **QUIC-protocol-based proxy service**, now upgraded with the faster **Tuic protocol** (best paired with the Clash Verge client)
+- ⚡ The world’s first **QUIC-protocol-based proxy service**, now featuring faster **QUIC-family protocols** (best paired with the Clash Verge client)
 - 🎬 Unlocks **streaming platforms and mainstream AI services**
 
 🌐 Official Website: 👉 [https://狗狗加速.com](https://verge.dginv.click/#/register?code=oaxsAGo6)
 
-#### Build Infrastructure Sponsor — [YXVM Dedicated Servers](https://yxvm.com/aff.php?aff=827)
+### 🤖 [GPTKefu — AI-Powered Customer Service Platform Deeply Integrated with Crisp](https://gptkefu.com)
 
-Our builds and releases run on YXVM dedicated servers that deliver premium resources, strong performance, and high-speed networking. If downloads feel fast and usage feels snappy, it is thanks to robust hardware.
+- 🧠 Deep understanding of full conversation context + image recognition, automatically providing professional and precise replies — no more robotic responses.
+- ♾️ **Unlimited replies**, no quota anxiety — unlike other AI customer service products that charge per message.
+- 💬 Pre-sales inquiries, after-sales support, complex Q&A — covers all scenarios effortlessly, with real user cases to prove it.
+- ⚡ 3-minute setup, zero learning curve — instantly boost customer service efficiency and satisfaction.
+- 🎁 Free 14-day trial of the Premium plan — try before you pay: 👉 [Start Free Trial](https://gptkefu.com)
+- 📢 AI Customer Service TG Channel: [@crisp_ai](https://t.me/crisp_ai)
 
-🧩 Highlights of YXVM Dedicated Servers:
-
-- 🌎 Optimized global routes for dramatically faster downloads
-- 🔧 Bare-metal resources instead of shared VPS capacity for maximum performance
-- 🧠 Great for proxy workloads, hosting web/CDN services, CI/CD pipelines, or any high-load tasks
-- 💡 Ready to use instantly with multiple datacenter options, including CN2 and IEPL
-- 📦 The configuration used by this project is on sale—feel free to get the same setup
-- 🎯 Want the same build environment? [Order a YXVM server today](https://yxvm.com/aff.php?aff=827)
+---
 
 ## Features
 

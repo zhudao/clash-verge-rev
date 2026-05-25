@@ -2,6 +2,7 @@ use crate::constants::files::DNS_CONFIG;
 use crate::{config::Config, process::AsyncHandler, utils::dirs};
 use anyhow::Error;
 use arc_swap::{ArcSwap, ArcSwapOption};
+use backon::{ConstantBuilder, Retryable as _};
 use clash_verge_logging::{Type, logging};
 use once_cell::sync::OnceCell;
 use reqwest_dav::list_cmd::{ListEntity, ListFile};
@@ -14,7 +15,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tauri_plugin_http::reqwest as tauri_reqwest;
 use tokio::{fs, time::timeout};
 use zip::write::SimpleFileOptions;
 
@@ -111,12 +111,12 @@ impl WebDavClient {
         // 创建新的客户端
         let client = reqwest_dav::ClientBuilder::new()
             .set_agent(
-                tauri_reqwest::Client::builder()
+                reqwest::Client::builder()
                     .use_rustls_tls()
                     .danger_accept_invalid_certs(true)
                     .timeout(Duration::from_secs(op.timeout()))
                     .user_agent(format!("clash-verge/{APP_VERSION} ({OS} WebDAV-Client)"))
-                    .redirect(tauri_reqwest::redirect::Policy::custom(|attempt| {
+                    .redirect(reqwest::redirect::Policy::custom(|attempt| {
                         // 允许所有请求类型的重定向，包括PUT
                         if attempt.previous().len() >= 5 {
                             attempt.error("重定向次数过多")
@@ -167,40 +167,25 @@ impl WebDavClient {
         let client = self.get_client(Operation::Upload).await?;
         let webdav_path: String = format!("{}/{}", dirs::BACKUP_DIR, file_name).into();
 
-        // 读取文件并上传，如果失败尝试一次重试
         let file_content = fs::read(&file_path).await?;
 
-        // 添加超时保护
-        let upload_result = timeout(
-            Duration::from_secs(TIMEOUT_UPLOAD),
-            client.put(&webdav_path, file_content.clone()),
-        )
-        .await;
+        let backoff = ConstantBuilder::default()
+            .with_delay(Duration::from_millis(500))
+            .with_max_times(1);
 
-        match upload_result {
-            Err(_) => {
-                logging!(warn, Type::Backup, "Warning: Upload timed out, retrying once");
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                timeout(
-                    Duration::from_secs(TIMEOUT_UPLOAD),
-                    client.put(&webdav_path, file_content),
-                )
-                .await??;
-                Ok(())
-            }
-
-            Ok(Err(e)) => {
-                logging!(warn, Type::Backup, "Warning: Upload failed, retrying once: {e}");
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                timeout(
-                    Duration::from_secs(TIMEOUT_UPLOAD),
-                    client.put(&webdav_path, file_content),
-                )
-                .await??;
-                Ok(())
-            }
-            Ok(Ok(_)) => Ok(()),
-        }
+        (|| async {
+            timeout(
+                Duration::from_secs(TIMEOUT_UPLOAD),
+                client.put(&webdav_path, file_content.clone()),
+            )
+            .await??;
+            Ok::<(), Error>(())
+        })
+        .retry(backoff)
+        .notify(|err, dur| {
+            logging!(warn, Type::Backup, "Upload failed: {err}, retrying in {dur:?}");
+        })
+        .await
     }
 
     pub async fn download(&self, filename: String, storage_path: PathBuf) -> Result<(), Error> {

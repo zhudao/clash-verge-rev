@@ -59,6 +59,7 @@
     "menu": {
       "home": "首 頁",
       "select": "使用",
+      "shareQrCode": "Share QR Code",
       "editInfo": "編輯資訊",
       "editFile": "編輯檔案",
       "editRules": "編輯規則",
@@ -72,8 +73,8 @@
     },
     "more": {
       "global": {
-        "merge": "Global Merge",
-        "script": "Global Script"
+        "merge": "Global Extend Config",
+        "script": "Global Extend Script"
       },
       "chips": {
         "merge": "Merge",
@@ -177,6 +178,9 @@
     },
     "logViewer": {
       "title": "指令碼控制台輸出"
+    },
+    "qrViewer": {
+      "title": "Subscription QR Code"
     }
   }
 }
