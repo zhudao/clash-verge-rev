@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import { useLockFn } from 'ahooks'
 import { getVersion } from 'tauri-plugin-mihomo-api'
 
@@ -8,7 +7,12 @@ import {
   getRuntimeConfig,
   patchClashConfig,
 } from '@/services/cmds'
-import { queryClient } from '@/services/query-client'
+import {
+  getCacheData,
+  revalidateQuery,
+  setCacheData,
+  useQuery,
+} from '@/services/query-client'
 
 type MutateClashUpdater =
   | ((old: IConfigData | undefined) => IConfigData | undefined)
@@ -90,9 +94,9 @@ export const useClash = () => {
     }
     const next =
       typeof updater === 'function'
-        ? updater(queryClient.getQueryData<IConfigData>(['getRuntimeConfig']))
+        ? updater(getCacheData<IConfigData>(['getRuntimeConfig']))
         : updater
-    queryClient.setQueryData(['getRuntimeConfig'], next)
+    setCacheData(['getRuntimeConfig'], next)
     if (revalidate !== false) {
       return refetch()
     }
@@ -130,11 +134,10 @@ export const useClashInfo = () => {
 
     await patchClashConfig(patch)
     mutateInfo()
-    queryClient.invalidateQueries({ queryKey: ['getClashConfig'] })
+    revalidateQuery(['getClashConfig'])
   })
 
-  const invalidateClashConfig = () =>
-    queryClient.invalidateQueries({ queryKey: ['getClashConfig'] })
+  const invalidateClashConfig = () => revalidateQuery(['getClashConfig'])
 
   return {
     clashInfo,
