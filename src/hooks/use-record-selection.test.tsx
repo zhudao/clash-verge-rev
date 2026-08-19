@@ -2,11 +2,12 @@
 import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useRecordSelection } from './use-record-selection'
+import { useForgetSelection, useRecordSelection } from './use-record-selection'
 
 const recordSelectedNode = vi.hoisted(() => vi.fn(() => Promise.resolve()))
+const forgetSelectedNode = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 
-vi.mock('@/services/cmds', () => ({ recordSelectedNode }))
+vi.mock('@/services/cmds', () => ({ forgetSelectedNode, recordSelectedNode }))
 
 const record = (groupName: string, proxyName: string) => {
   const { result } = renderHook(() => useRecordSelection())
@@ -15,6 +16,49 @@ const record = (groupName: string, proxyName: string) => {
 
 beforeEach(() => {
   recordSelectedNode.mockClear()
+  forgetSelectedNode.mockClear()
+})
+
+describe('useForgetSelection', () => {
+  it('sends only the group name', () => {
+    const { result } = renderHook(() => useForgetSelection())
+
+    result.current('Proxy')
+
+    expect(forgetSelectedNode).toHaveBeenCalledWith('Proxy')
+  })
+
+  it('resolves after the clear request finishes', async () => {
+    let resolveForget!: () => void
+    forgetSelectedNode.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolveForget = resolve)),
+    )
+    const { result } = renderHook(() => useForgetSelection())
+
+    const forget = result.current('Proxy')
+    let settled = false
+    forget.then(() => {
+      settled = true
+    })
+
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    resolveForget()
+    await forget
+    expect(settled).toBe(true)
+  })
+
+  it('reports a failed clear without throwing at the caller', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    forgetSelectedNode.mockRejectedValueOnce(new Error('no profile'))
+    const { result } = renderHook(() => useForgetSelection())
+
+    expect(() => result.current('Proxy')).not.toThrow()
+
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalled())
+    consoleError.mockRestore()
+  })
 })
 
 describe('useRecordSelection', () => {
@@ -25,11 +69,7 @@ describe('useRecordSelection', () => {
   })
 
   it('does not derive anything from a rendered selection list', () => {
-    // The regression this pins. It used to build the whole list from the profile it had
-    // rendered, so two selections made before that list refreshed were both derived from the
-    // same stale snapshot and the later one dropped the earlier group. Since a core start
-    // re-applies whatever the profile holds, the dropped choice came back on the next restart.
-    // Each call now carries one group, and the backend merges against the current profile.
+    // Pair-wise writes let the backend merge concurrent choices against fresh state.
     record('Proxy', 'Node A')
     record('Fallback', 'Node C')
 
@@ -47,8 +87,7 @@ describe('useRecordSelection', () => {
   })
 
   it('reports a failed write without throwing at the caller', async () => {
-    // Recording runs after the core has already been switched; failing the switch over it would
-    // be wrong, so the caller is never made to handle it.
+    // Persistence failure cannot roll back a core selection that already succeeded.
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     recordSelectedNode.mockRejectedValueOnce(new Error('no profile'))
 
