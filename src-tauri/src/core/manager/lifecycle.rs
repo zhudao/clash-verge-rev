@@ -465,6 +465,29 @@ impl CoreManager {
         .ok_or_else(|| {
             anyhow::anyhow!("cannot apply system proxy before core readiness").context(SysproxyFailure::CoreNotReady)
         })?;
+        // At login the app usually beats the network. Leave the write to the network watcher
+        // rather than fail — only if the watcher is actually live; a user toggling while
+        // offline still fails fast.
+        #[cfg(target_os = "macos")]
+        let watcher_armed = crate::core::network_watch::is_armed();
+        #[cfg(not(target_os = "macos"))]
+        let watcher_armed = false;
+        if watcher_armed
+            && !crate::utils::resolve::is_resolve_done()
+            && Config::verge()
+                .await
+                .latest_arc()
+                .enable_system_proxy
+                .unwrap_or_default()
+            && !proxy_control::has_network_service().await
+        {
+            logging!(
+                info,
+                Type::Core,
+                "no network service yet; the system proxy is applied once one appears"
+            );
+            return Ok(());
+        }
         proxy_control::apply().await?;
         if !expectation.is_valid(
             self.get_running_mode().as_ref(),

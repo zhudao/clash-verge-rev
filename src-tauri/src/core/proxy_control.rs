@@ -384,6 +384,15 @@ async fn current_service_proxy_config(verge: &IVerge) -> Result<MacosProxyConfig
     service_proxy_config(verge, mixed_port, 0)
 }
 
+/// Whether macOS has a network service to write the proxy on right now.
+pub async fn has_network_service() -> bool {
+    tokio::task::spawn_blocking(
+        || !matches!(sysproxy::Sysproxy::get_system_proxy(), Err(error) if is_missing_network_service(&error)),
+    )
+    .await
+    .unwrap_or(true)
+}
+
 pub fn is_reportable(error: &anyhow::Error) -> bool {
     is_reportable_given(error, notification::has_pending_failure)
 }
@@ -1069,7 +1078,10 @@ mod tests {
         assert_eq!(refusal_classification(None), SysproxyFailure::PrivilegeRequired);
     }
 
-    use super::{SystemProxyStateUnknown, is_reportable_given, rollback_failure, service_apply_result};
+    use super::{SystemProxyStateUnknown, is_reportable_given, rollback_failure};
+
+    #[cfg(target_os = "macos")]
+    use super::service_apply_result;
 
     #[cfg(target_os = "macos")]
     #[test]
