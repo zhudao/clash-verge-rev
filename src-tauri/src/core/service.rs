@@ -37,9 +37,13 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(target_os = "windows")]
+pub(crate) mod windows_fallback;
+
 static OWNER_MONITOR_GENERATION: AtomicU64 = AtomicU64::new(0);
 static ACTIVE_SERVICE_SESSION: Lazy<Mutex<Option<ActiveServiceSession>>> = Lazy::new(|| Mutex::new(None));
 static PENDING_SERVICE_FALLBACK_NOTICE: AtomicBool = AtomicBool::new(false);
+static PENDING_SERVICE_REPAIR_NOTICE: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "windows")]
 pub(crate) fn notify_service_fallback() {
@@ -49,6 +53,10 @@ pub(crate) fn notify_service_fallback() {
 
 pub(crate) fn take_service_fallback_notice() -> bool {
     PENDING_SERVICE_FALLBACK_NOTICE.swap(false, Ordering::Relaxed)
+}
+
+pub(crate) fn take_service_repair_notice() -> bool {
+    PENDING_SERVICE_REPAIR_NOTICE.swap(false, Ordering::Relaxed)
 }
 
 /// Capabilities of the service session that owns the running Core.
@@ -580,11 +588,11 @@ fn install_service() -> Result<()> {
         .iter()
         .map(|core| service_core_path(core, ".exe"))
         .collect::<Result<Vec<_>>>()?;
-    install_windows_service_with_cores(&cores, run_windows_service_installer)
+    install_service_with_cores(&cores, run_windows_service_installer)
 }
 
-#[cfg(target_os = "windows")]
-fn install_windows_service_with_cores(
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+fn install_service_with_cores(
     cores: &[PathBuf],
     mut run_installer: impl FnMut(&[std::ffi::OsString]) -> Result<()>,
 ) -> Result<()> {
@@ -709,7 +717,15 @@ fn uninstall_service() -> Result<()> {
 #[cfg(target_os = "linux")]
 fn install_service() -> Result<()> {
     logging!(info, Type::Service, "install service");
+    let cores = crate::config::IVerge::VALID_CLASH_CORES
+        .iter()
+        .map(|core| service_core_path(core, ""))
+        .collect::<Result<Vec<_>>>()?;
+    install_service_with_cores(&cores, run_linux_service_installer)
+}
 
+#[cfg(target_os = "linux")]
+fn run_linux_service_installer(arguments: &[std::ffi::OsString]) -> Result<()> {
     let install_path = packaged_service_tool_path("clash-verge-service-install", || {
         Ok(tauri::utils::platform::current_exe()?.with_file_name("clash-verge-service-install"))
     })?;
@@ -720,12 +736,13 @@ fn install_service() -> Result<()> {
 
     let elevator = crate::utils::help::linux_elevator();
     let output = if linux_running_as_root() {
-        StdCommand::new(&install_path).output()?
+        StdCommand::new(&install_path).args(arguments).output()?
     } else {
-        let result = StdCommand::new(&elevator)
-            .arg("--disable-internal-agent")
-            .arg(&install_path)
-            .output()?;
+        let mut elevated = StdCommand::new(&elevator);
+        if elevator.contains("pkexec") {
+            elevated.arg("--disable-internal-agent");
+        }
+        let result = elevated.arg(&install_path).args(arguments).output()?;
 
         // 如果 pkexec 执行失败，回退到 sudo
         if !result.status.success() && elevator.contains("pkexec") {
@@ -735,7 +752,7 @@ fn install_service() -> Result<()> {
                 "pkexec failed with code {}, falling back to sudo",
                 result.status.code().unwrap_or(-1)
             );
-            StdCommand::new("sudo").arg(&install_path).output()?
+            StdCommand::new("sudo").arg(&install_path).args(arguments).output()?
         } else {
             result
         }
@@ -1141,6 +1158,11 @@ pub(super) async fn start_with_existing_service(config_file: &Path) -> Result<()
             response.code,
             err_msg
         );
+        #[cfg(target_os = "windows")]
+        if response.code == ServiceErrorCode::InvalidInstallLocation as u16 {
+            PENDING_SERVICE_REPAIR_NOTICE.store(true, Ordering::Relaxed);
+            Handle::notice_message("service_core::repair_required", "");
+        }
         start_owner_monitor();
         return Err(ServiceStartRefusal {
             code: response.code,
@@ -1167,6 +1189,7 @@ pub(super) async fn start_with_existing_service(config_file: &Path) -> Result<()
     start_owner_monitor();
     tracing::Span::current().record("outcome", "started");
     PENDING_SERVICE_FALLBACK_NOTICE.store(false, Ordering::Relaxed);
+    PENDING_SERVICE_REPAIR_NOTICE.store(false, Ordering::Relaxed);
     logging!(
         info,
         Type::Service,
@@ -1351,8 +1374,9 @@ async fn sync_runtime_providers_by_service() -> Result<ProviderSync> {
                 logging!(
                     warn,
                     Type::Service,
-                    "provider cache {} was not read: {error:#}",
-                    declared.provider.destination
+                    "failed to read provider cache {} into {}: {error:#}",
+                    declared.provider.destination,
+                    temp.display()
                 );
                 outcome.pending += 1;
                 remove_temp(&temp).await;
@@ -1442,8 +1466,9 @@ async fn publish_fetched(
                 logging!(
                     warn,
                     Type::Service,
-                    "provider cache {} was not published: {error}",
-                    cache.declared.provider.destination
+                    "failed to rename provider cache {} to {}: {error}",
+                    cache.temp.display(),
+                    target.display()
                 );
                 remove_temp(&cache.temp).await;
             }
@@ -1587,7 +1612,9 @@ fn has_settled(mtime_ns: Option<u64>) -> bool {
 // Exclusive creation protects existing files from truncation and cleanup.
 async fn create_sync_temp(target: &Path) -> Result<(PathBuf, tokio::fs::File)> {
     if let Some(parent) = target.parent() {
-        tokio::fs::create_dir_all(parent).await?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("failed to create provider cache directory {}", parent.display()))?;
     }
     let name = target
         .file_name()
@@ -1959,12 +1986,13 @@ async fn recover_after_owner_loss_while_locked(reason: OwnerRecoveryReason) {
 #[tracing::instrument(skip_all, level = "info", fields(attempts = tracing::field::Empty, interval_ms = tracing::field::Empty, outcome = tracing::field::Empty))]
 async fn wait_for_service_ipc() -> Result<()> {
     const CONTEXT: &str = "service IPC did not become available";
-    let config = ServiceManager::config();
+    const READY_ATTEMPTS: usize = 61;
+    const READY_INTERVAL: Duration = Duration::from_millis(500);
     let span = tracing::Span::current();
-    span.record("attempts", config.max_retries);
-    span.record("interval_ms", config.retry_delay.as_millis() as u64);
+    span.record("attempts", READY_ATTEMPTS);
+    span.record("interval_ms", READY_INTERVAL.as_millis() as u64);
 
-    match RUN_STATE.await_ready(config.max_retries, config.retry_delay).await {
+    match RUN_STATE.await_ready(READY_ATTEMPTS, READY_INTERVAL).await {
         Ok(_) => {
             tracing::Span::current().record("outcome", "ready");
             Ok(())
@@ -2235,20 +2263,19 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "windows")]
     #[test]
-    fn windows_service_install_combines_service_and_attested_cores() -> anyhow::Result<()> {
+    fn service_install_combines_service_and_attested_cores() -> anyhow::Result<()> {
         use std::ffi::OsString;
-        let root = TestDirectory::new("scoop install")?;
+        let root = TestDirectory::new("service install")?;
         let cores: Vec<_> = crate::config::IVerge::VALID_CLASH_CORES
             .iter()
-            .map(|name| root.path().join(format!("{name}.exe")))
+            .map(|name| root.path().join(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
             .collect();
         for core in &cores {
             std::fs::write(core, b"abc")?;
         }
         let mut calls = Vec::new();
-        super::install_windows_service_with_cores(&cores, |arguments| {
+        super::install_service_with_cores(&cores, |arguments| {
             calls.push(arguments.to_vec());
             Ok(())
         })?;
@@ -2267,16 +2294,19 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(target_os = "windows")]
     #[test]
-    fn windows_service_install_skips_unavailable_cores() -> anyhow::Result<()> {
+    fn service_install_skips_unavailable_cores() -> anyhow::Result<()> {
         let root = TestDirectory::new("missing-core")?;
-        let core = root.path().join("verge-mihomo.exe");
-        let missing = root.path().join("verge-mihomo-alpha.exe");
+        let core = root
+            .path()
+            .join(format!("verge-mihomo{}", std::env::consts::EXE_SUFFIX));
+        let missing = root
+            .path()
+            .join(format!("verge-mihomo-alpha{}", std::env::consts::EXE_SUFFIX));
         std::fs::write(&core, b"abc")?;
         let cores = [core.clone(), missing.clone(), root.path().to_path_buf()];
         let mut calls = Vec::new();
-        super::install_windows_service_with_cores(&cores, |arguments| {
+        super::install_service_with_cores(&cores, |arguments| {
             calls.push(arguments.to_vec());
             Ok(())
         })?;
@@ -2285,7 +2315,7 @@ mod tests {
         assert_eq!(calls[0][0], "--install-service");
         assert_eq!(calls[0][2], core.as_os_str());
 
-        let error = super::install_windows_service_with_cores(&[missing, root.path().to_path_buf()], |_| {
+        let error = super::install_service_with_cores(&[missing, root.path().to_path_buf()], |_| {
             panic!("no available core must fail before invoking the installer")
         })
         .expect_err("installation requires at least one available core");
@@ -2293,14 +2323,15 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(target_os = "windows")]
     #[test]
-    fn windows_service_install_propagates_installer_failure() -> anyhow::Result<()> {
+    fn service_install_propagates_installer_failure() -> anyhow::Result<()> {
         let root = TestDirectory::new("install-failure")?;
-        let core = root.path().join("verge-mihomo.exe");
+        let core = root
+            .path()
+            .join(format!("verge-mihomo{}", std::env::consts::EXE_SUFFIX));
         std::fs::write(&core, b"abc")?;
         let mut calls = 0;
-        let result = super::install_windows_service_with_cores(std::slice::from_ref(&core), |_| {
+        let result = super::install_service_with_cores(std::slice::from_ref(&core), |_| {
             calls += 1;
             bail!("installer failed with exit code 1")
         });

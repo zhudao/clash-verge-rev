@@ -224,6 +224,7 @@ export interface TranslationResources {
             sidecarFailed: string
             stateRefreshFailed: string
           }
+          locationRefusedMessage: string
           message: string
           reinstall: string
           repair: string
@@ -446,6 +447,7 @@ export interface TranslationResources {
             updateFailed: string
           }
           notices: {
+            discardedKeys: string
             emergencyRefreshFailed: string
             forceRefreshCompleted: string
           }
@@ -953,6 +955,7 @@ export interface TranslationResources {
         }
         dns: {
           dialog: {
+            profileScope: string
             title: string
             warning: string
           }
